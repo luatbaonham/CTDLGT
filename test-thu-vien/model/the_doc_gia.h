@@ -36,13 +36,15 @@ public:
         nodeMuonTra = nullptr;
     }
 
-    int getMaThe() { return maThe; }
-    string getHo() { return ho; }
-    string getTen() { return ten; }
-    string getPhai() { return phai; }
-    TrangThaiTheDocGia getTrangThai() { return trangThai; }
-    NodeMuonTra *getNodeMuonTra() { return nodeMuonTra; }
+    // Getter const
+    int getMaThe() const { return maThe; }
+    string getHo() const { return ho; }
+    string getTen() const { return ten; }
+    string getPhai() const { return phai; }
+    TrangThaiTheDocGia getTrangThai() const { return trangThai; }
+    NodeMuonTra *getNodeMuonTra() const { return nodeMuonTra; }
 
+    // Setter
     void setMaThe(int maThe) { this->maThe = maThe; }
     void setHo(string ho) { this->ho = ho; }
     void setTen(string ten) { this->ten = ten; }
@@ -210,6 +212,8 @@ public:
     }
 
     TheDocGia& getData() { return data; }
+    const TheDocGia& getData() const { return data; }
+
     NodeTheDocGia *getLeft() { return left; }
     NodeTheDocGia *getRight() { return right; }
 

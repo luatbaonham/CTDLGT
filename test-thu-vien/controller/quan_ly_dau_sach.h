@@ -57,6 +57,15 @@ private:
         out.close();
     }
 
+    int safeStoi(const string& s, int defaultVal = 0) {
+        try {
+            if (s.empty()) return defaultVal;
+            return stoi(s);
+        } catch (...) {
+            return defaultVal;
+        }
+    }
+
     void docFile(string fileName) {
         ifstream in(fileName);
         if (!in.is_open()) return;
@@ -64,6 +73,7 @@ private:
         soLuong = 0;
         string line;
         while (getline(in, line)) {
+            if (line.empty()) continue; // bỏ qua dòng trống
             if (soLuong >= MAX_DAU_SACH) break;
 
             stringstream ss(line);
@@ -78,20 +88,20 @@ private:
             getline(ss, soLanMuonStr, '|');
             getline(ss, dsSachStr);
 
-            // Truy cập trực tiếp nodes[soLuong]
             DauSach& ds = nodes[soLuong];
             ds.setISBN(isbn);
             ds.setTenSach(tenSach);
-            ds.setSoTrang(stoi(soTrangStr));
+            ds.setSoTrang(safeStoi(soTrangStr));
             ds.setTacGia(tacGia);
-            ds.setNamXuatBan(stoi(namXBStr));
+            ds.setNamXuatBan(safeStoi(namXBStr));
             ds.setTheLoai(theLoai);
-            ds.setSoLanMuon(stoi(soLanMuonStr));
+            ds.setSoLanMuon(safeStoi(soLanMuonStr));
 
             // Đọc danh sách sách
             stringstream listStream(dsSachStr);
             string sachInfo;
             while (getline(listStream, sachInfo, ';')) {
+                if (sachInfo.empty()) continue;
                 stringstream sstream(sachInfo);
                 string ma, trangThaiStr, viTri;
                 getline(sstream, ma, ',');
@@ -100,7 +110,7 @@ private:
 
                 Sach s;
                 s.setMaSach(ma);
-                s.setTrangThai((TrangThaiSach)stoi(trangThaiStr));
+                s.setTrangThai((TrangThaiSach)safeStoi(trangThaiStr));
                 s.setViTri(viTri);
                 ds.themSach(s);
             }

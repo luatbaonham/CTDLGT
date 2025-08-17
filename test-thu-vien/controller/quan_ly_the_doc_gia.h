@@ -10,6 +10,10 @@
 #include <sstream>
 #include <cstdlib>
 #include <ctime>
+//tiếng việt
+#include <QCollator>
+#include <QLocale>
+#include <QString>
 #include "the_doc_gia.h"
 #include "dau_sach.h"
 #include "quan_ly_dau_sach.h"
@@ -20,6 +24,69 @@
 class QuanLyTheDocGia {
 private:
     NodeTheDocGia *root;
+    TheDocGia** danhSachTheoTen;  // Mảng tạm theo tên
+    int soLuongDocGia;
+
+    int soSanhTenHo(const TheDocGia& a, const TheDocGia& b) {
+        static QCollator coll(QLocale(QLocale::Vietnamese, QLocale::Vietnam));
+        coll.setCaseSensitivity(Qt::CaseInsensitive);
+        coll.setNumericMode(true);               // "A2" < "A10"
+        coll.setIgnorePunctuation(true);         // bỏ qua dấu câu nếu có
+
+        const QString tenA = QString::fromStdString(a.getTen()).trimmed().simplified();
+        const QString tenB = QString::fromStdString(b.getTen()).trimmed().simplified();
+
+        int cmp = coll.compare(tenA, tenB);
+        if (cmp != 0) return cmp;
+
+        const QString hoA  = QString::fromStdString(a.getHo()).trimmed().simplified();
+        const QString hoB  = QString::fromStdString(b.getHo()).trimmed().simplified();
+
+        return coll.compare(hoA, hoB);           // tăng dần theo họ khi tên trùng
+    }
+
+    // Chèn phần tử mới vào mảng tạm theo đúng vị trí sort
+    void chenVaoMangTheoTen(TheDocGia* dg) {
+        TheDocGia** newArr = new TheDocGia*[soLuongDocGia + 1];
+
+        int i = 0, j = 0;
+        bool daChen = false;
+
+        while (i < soLuongDocGia) {
+            if (!daChen && soSanhTenHo(*dg, *danhSachTheoTen[i]) < 0) {
+                newArr[j++] = dg;
+                daChen = true;
+            }
+            newArr[j++] = danhSachTheoTen[i++];
+        }
+
+        if (!daChen) {
+            newArr[j++] = dg;
+        }
+
+        delete[] danhSachTheoTen;
+        danhSachTheoTen = newArr;
+        soLuongDocGia++;
+    }
+
+    // Xóa phần tử khỏi mảng tạm theo mã thẻ
+    void xoaKhoiMangTheoTen(int maThe) {
+        if (!danhSachTheoTen || soLuongDocGia == 0) return;
+
+        int newSize = soLuongDocGia - 1;
+        TheDocGia** newArr = new TheDocGia*[newSize];
+
+        int j = 0;
+        for (int i = 0; i < soLuongDocGia; i++) {
+            if (danhSachTheoTen[i]->getMaThe() != maThe) {
+                newArr[j++] = danhSachTheoTen[i];
+            }
+        }
+
+        delete[] danhSachTheoTen;
+        danhSachTheoTen = newArr;
+        soLuongDocGia = newSize;
+    }
 
     int taoMaTheNgauNhien() {
         int ma;
@@ -28,6 +95,7 @@ private:
         } while (tim(root, ma) != nullptr);
         return ma;
     }
+
     void duyetTruoc(NodeTheDocGia* node, QTableWidget* table, int& row) {
         if (node == nullptr) return;
         themDocGiaVaoBang(&node->getData(), table, row++);
@@ -35,26 +103,47 @@ private:
         duyetTruoc(node->getRight(), table, row);
     }
 
-
     NodeTheDocGia* them(NodeTheDocGia *node, TheDocGia data) {
         if (node == nullptr) return new NodeTheDocGia(data);
         if (data.getMaThe() < node->getData().getMaThe()) node->setLeft(them(node->getLeft(), data));
         else if (data.getMaThe() > node->getData().getMaThe()) node->setRight(them(node->getRight(), data));
         return node;
-    }//cập nhật cây
-
+    }
 
     NodeTheDocGia* tim(NodeTheDocGia *node, int maThe) {
         if (node == nullptr || node->getData().getMaThe() == maThe) return node;
         if (maThe < node->getData().getMaThe()) return tim(node->getLeft(), maThe);
         return tim(node->getRight(), maThe);
-    }//tìm node vừa thêm
+    }
 
     void duyetLNR(NodeTheDocGia *root, QTableWidget *table, int &row) {
         if (root == nullptr) return;
         duyetLNR(root->getLeft(), table, row);
         themDocGiaVaoBang(&root->getData(), table, row++);
         duyetLNR(root->getRight(), table, row);
+    }
+
+    // Xây lại danh sách theo tên từ cây
+    void buildDanhSachTheoTenTuCay(NodeTheDocGia* node) {
+        if (!node) return;
+
+        buildDanhSachTheoTenTuCay(node->getLeft());
+
+        TheDocGia* copy = new TheDocGia(node->getData());
+        chenVaoMangTheoTen(copy); // sắp xếp vào mảng tạm theo tên
+
+        buildDanhSachTheoTenTuCay(node->getRight());
+    }
+
+    void capNhatDocGiaTrongMang(const TheDocGia& docGia) {
+        if (!danhSachTheoTen) return;
+
+        // Xóa bản cũ trong mảng
+        xoaKhoiMangTheoTen(docGia.getMaThe());
+
+        // Thêm bản mới vào đúng vị trí
+        TheDocGia* copy = new TheDocGia(docGia);
+        chenVaoMangTheoTen(copy);
     }
 
     void themDocGiaVaoBang(TheDocGia* dg, QTableWidget* table, int row) {
@@ -88,7 +177,11 @@ private:
             DialogSuaDocGia dialog(*docGia, table);
             if (dialog.exec() == QDialog::Accepted) {
                 dialog.capNhatDocGia(*docGia);
-                this->hienThiDanhSachDocGia(table); // hoặc gọi lại theo loại sắp xếp hiện tại
+                // 🔹 cập nhật lại mảng tạm
+                this->capNhatDocGiaTrongMang(*docGia);
+
+                // 🔹 refresh bảng theo tên
+                this->hienThiDanhSachDocGiaTheoTen(table);
             }
         });
 
@@ -99,7 +192,7 @@ private:
                                            QMessageBox::Yes | QMessageBox::No);
             if (ret == QMessageBox::Yes) {
                 this->xoaTheDocGia(maThe);
-                this->hienThiDanhSachDocGia(table); // hoặc tương ứng
+                this->hienThiDanhSachDocGiaTheoTen(table);
             }
         });
     }
@@ -110,7 +203,6 @@ private:
         giaiPhong(node->getLeft());
         giaiPhong(node->getRight());
 
-        // Tránh gọi getData() nhiều lần
         TheDocGia& docGia = node->getData();
         NodeMuonTra* current = docGia.getNodeMuonTra();
 
@@ -120,9 +212,7 @@ private:
             delete tmp;
         }
 
-        // Đảm bảo không để con trỏ treo trong đối tượng gốc
         docGia.setNodeMuonTra(nullptr);
-
         delete node;
     }
 
@@ -145,7 +235,7 @@ private:
 
     void ghiNode(NodeTheDocGia* node, ofstream& out) {
         if (node == nullptr) {
-            out << "#\n";  // Đánh dấu node rỗng
+            out << "#\n";
             return;
         }
 
@@ -172,7 +262,7 @@ private:
                           << (int)mt.getTrangThai();
 
             cur = cur->getNext();
-            if (cur != nullptr) muonTraStream << ";";  // phân cách giữa các sách
+            if (cur != nullptr) muonTraStream << ";";
         }
 
         out << muonTraStream.str() << "\n";
@@ -181,10 +271,19 @@ private:
         ghiNode(node->getRight(), out);
     }
 
+    int safeStoi(const string& s, int defaultVal = 0) {
+        try {
+            if (s.empty()) return defaultVal;
+            return stoi(s);
+        } catch (...) {
+            return defaultVal;
+        }
+    }
+
     NodeTheDocGia* docNode(ifstream& in) {
         string line;
         if (!getline(in, line)) return nullptr;
-
+        if (line.empty()) return docNode(in); // bỏ qua dòng trống
         if (line == "#") return nullptr;
 
         stringstream ss(line);
@@ -198,16 +297,16 @@ private:
         getline(ss, dsMuonTraStr);
 
         TheDocGia dg;
-        dg.setMaThe(stoi(maStr));
+        dg.setMaThe(safeStoi(maStr));
         dg.setHo(ho);
         dg.setTen(ten);
         dg.setPhai(phai == "0" ? "Nam" : "Nữ");
-        dg.setTrangThai((TrangThaiTheDocGia)stoi(trangThaiStr));
+        dg.setTrangThai((TrangThaiTheDocGia)safeStoi(trangThaiStr));
 
         stringstream listStream(dsMuonTraStr);
         string muonTraInfo;
-        NodeMuonTra *nodeMuonTra = nullptr;
         while (getline(listStream, muonTraInfo, ';')) {
+            if (muonTraInfo.empty()) continue;
             stringstream sstream(muonTraInfo);
             string maSach, ngayMuonStr, ngayTraStr, trangThaiStr;
 
@@ -216,7 +315,7 @@ private:
             getline(sstream, ngayTraStr, ',');
             getline(sstream, trangThaiStr);
 
-            int d, m, y;
+            int d = 0, m = 0, y = 0;
             sscanf(ngayMuonStr.c_str(), "%d-%d-%d", &d, &m, &y);
             Ngay ngayMuon(d, m, y);
 
@@ -227,7 +326,7 @@ private:
             mt.setMaSach(maSach);
             mt.setNgayMuon(ngayMuon);
             mt.setNgayTra(ngayTra);
-            mt.setTrangThai((TrangThaiMuonTra)stoi(trangThaiStr));
+            mt.setTrangThai((TrangThaiMuonTra)safeStoi(trangThaiStr));
 
             dg.themMuonTra(mt);
         }
@@ -241,7 +340,10 @@ private:
 public:
     QuanLyTheDocGia() {
         root = nullptr;
+        danhSachTheoTen = nullptr;
+        soLuongDocGia = 0;
         docFile(FILE_THE_DOC_GIA);
+        buildDanhSachTheoTenTuCay(root);
         srand(time(0));
     }
 
@@ -249,6 +351,10 @@ public:
         ghiFile(FILE_THE_DOC_GIA);
         giaiPhong(root);
         root = nullptr;
+
+        if (danhSachTheoTen) {
+            delete[] danhSachTheoTen;
+        }
     }
 
     NodeTheDocGia* getRoot() { return root; }
@@ -256,6 +362,11 @@ public:
     void themTheDocGia(TheDocGia data) {
         data.setMaThe(taoMaTheNgauNhien());
         root = them(root, data);
+
+        TheDocGia* dgPtr = timTheDocGia(data.getMaThe());
+        if (dgPtr) {
+            chenVaoMangTheoTen(dgPtr);
+        }
     }
 
     TheDocGia* timTheDocGia(int maThe) {
@@ -269,7 +380,7 @@ public:
         table->setHorizontalHeaderLabels({"Mã thẻ", "Họ", "Tên", "Phái", "Trạng thái", "Hành động"});
         table->setRowCount(0);
         int row = 0;
-        duyetTruoc(root, table, row);  // <<== sửa ở đây
+        duyetTruoc(root, table, row);
     }
 
     void hienThiDanhSachDocGiaTheoMa(QTableWidget *table) {
@@ -277,99 +388,17 @@ public:
         table->setHorizontalHeaderLabels({"Mã thẻ", "Họ", "Tên", "Phái", "Trạng thái", "Hành động"});
         table->setRowCount(0);
         int row = 0;
-        duyetLNR(root, table, row);  // duyệt theo thứ tự mã thẻ tăng dần
+        duyetLNR(root, table, row);
     }
-
-    void layDanhSachDocGia(NodeTheDocGia* node, TheDocGia** arr, int& index) {
-        if (node == nullptr) return;
-        layDanhSachDocGia(node->getLeft(), arr, index);
-        arr[index++] = &node->getData();
-        layDanhSachDocGia(node->getRight(), arr, index);
-    }
-    int demSoDocGia(NodeTheDocGia* node) {
-        if (node == nullptr) return 0;
-        return 1 + demSoDocGia(node->getLeft()) + demSoDocGia(node->getRight());
-    }
-    void SapXepTangTheoTenVaHo(TheDocGia** temp, int soLuong) {
-        TheDocGia* tmp;
-        char ten1[100], ten2[100];
-        char ho1[100], ho2[100];
-
-        for (int i = 0; i < soLuong - 1; i++) {
-            for (int j = i + 1; j < soLuong; j++) {
-                // Copy tên
-                strcpy(ten1, temp[i]->getTen().c_str());
-                strcpy(ten2, temp[j]->getTen().c_str());
-                // So sánh tên trước
-                if (_stricmp(ten1, ten2) > 0) {
-                    tmp = temp[i];
-                    temp[i] = temp[j];
-                    temp[j] = tmp;
-                } else if (_stricmp(ten1, ten2) == 0) {
-                    // Nếu tên giống nhau, so sánh họ
-                    strcpy(ho1, temp[i]->getHo().c_str());
-                    strcpy(ho2, temp[j]->getHo().c_str());
-                    if (_stricmp(ho1, ho2) > 0) {
-                        tmp = temp[i];
-                        temp[i] = temp[j];
-                        temp[j] = tmp;
-                    }
-                }
-            }
-        }
-    }
-
 
     void hienThiDanhSachDocGiaTheoTen(QTableWidget* table) {
-        int soLuong = demSoDocGia(root);
-        if (soLuong == 0) return;
+        if (!danhSachTheoTen) return;
 
-        TheDocGia** danhSach = new TheDocGia*[soLuong];
-        int index = 0;
-        layDanhSachDocGia(root, danhSach, index);
-
-        SapXepTangTheoTenVaHo(danhSach, soLuong);
-
-        table->setColumnCount(6);
-        table->setHorizontalHeaderLabels({"Mã thẻ", "Họ", "Tên", "Phái", "Trạng thái", "Hành động"});
         table->setRowCount(0);
-
-        for (int i = 0; i < soLuong; ++i) {
-            themDocGiaVaoBang(danhSach[i], table, i);
+        for (int i = 0; i < soLuongDocGia; ++i) {
+            themDocGiaVaoBang(danhSachTheoTen[i], table, i);
         }
-
-        delete[] danhSach;
     }
-
-
-
-
-    // void layTatCaDocGia(NodeTheDocGia* node, std::vector<TheDocGia*>& ds) {
-    //     if (node == nullptr) return;
-    //     layTatCaDocGia(node->getLeft(), ds);
-    //     ds.push_back(&node->getData()); // node->data là TheDocGia
-    //     layTatCaDocGia(node->getRight(), ds);
-    // }
-
-    // void hienThiDanhSachDocGiaTheoTen(QTableWidget *table) {
-    //     std::vector<TheDocGia*> danhSach;
-    //     layTatCaDocGia(root, danhSach);
-
-    //     std::sort(danhSach.begin(), danhSach.end(), [](TheDocGia* a, TheDocGia* b) {
-    //         if (a->getTen() != b->getTen())
-    //             return a->getTen() < b->getTen();
-    //         return a->getHo() < b->getHo();
-    //     });
-
-    //     table->setColumnCount(6);
-    //     table->setHorizontalHeaderLabels({"Mã thẻ", "Họ", "Tên", "Phái", "Trạng thái", "Hành động"});
-    //     table->setRowCount(0);
-
-    //     for (int row = 0; row < danhSach.size(); ++row) {
-    //         themDocGiaVaoBang(danhSach[row], table, row);
-    //     }
-    // }
-
 
     void xoaTheDocGia(int maThe) {
         // Tìm node cha và node cần xóa
@@ -436,7 +465,10 @@ public:
 
             delete successor;
         }
+
+        xoaKhoiMangTheoTen(maThe);
     }
+
 
     void hienThiDanhSachSachDangMuon(TheDocGia &theDocGia, QuanLyDauSach &qlDauSach, QTableWidget *tableWidget) {
         NodeMuonTra *node = theDocGia.layDSSachDangMuon();

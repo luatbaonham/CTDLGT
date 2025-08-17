@@ -262,6 +262,7 @@ void MainWindow::on_btn_themDocGia_clicked() {
     TheDocGia theDocGia = TheDocGia(ho, ten, phai);
 
     qlTheDocGia.themTheDocGia(theDocGia);
+    qlTheDocGia.hienThiDanhSachDocGia(tableWidget_docGia);
 
     QMessageBox::information(this, "Thành công", "Thêm độc giả thành công.");
 }
@@ -299,6 +300,13 @@ void MainWindow::on_btn_themDauSach_clicked() {
     try {
         qlDauSach.themDauSach(dauSach);
         QMessageBox::information(this, "Thành công", "Đã thêm đầu sách.");
+
+        //Cập nhật lại bảng luôn
+        string tenFilter = lineEdit_timTenSach->text().toStdString();
+        string theLoaiFilter = comboBox_locTheLoai->currentText().toStdString();
+        if (theLoaiFilter == "Tất cả") theLoaiFilter = "";
+
+        qlDauSach.hienThiDanhSachDauSach(tenFilter, theLoaiFilter, tableWidget_dauSach);
     } catch (const char *msg) {
         QMessageBox::critical(this, "Lỗi", msg);
     }
@@ -405,16 +413,15 @@ void MainWindow::on_btn_traSach_clicked() {
 }
 
 void MainWindow::on_btn_xemSachDangMuon_clicked() {
-    // Logic xem sách đang mượn
-    bool checkMaTheXem;
-
-    int maTheXem = lineEdit_maTheXem->text().toInt(&checkMaTheXem);
-    if (!checkMaTheXem) {
-        QMessageBox::warning(this, "Lỗi", "Vui lòng không để trống.");
+    // Lấy mã thẻ từ ô mượn sách (không nhập lại)
+    bool checkMaTheMuon;
+    int maTheMuon = lineEdit_maTheMuon->text().toInt(&checkMaTheMuon);
+    if (!checkMaTheMuon) {
+        QMessageBox::warning(this, "Lỗi", "Vui lòng nhập mã thẻ mượn ở trên trước.");
         return;
     }
 
-    TheDocGia *theDocGia = qlTheDocGia.timTheDocGia(maTheXem);
+    TheDocGia *theDocGia = qlTheDocGia.timTheDocGia(maTheMuon);
     if (theDocGia == nullptr) {
         QMessageBox::warning(this, "Lỗi", "Không tìm thấy thẻ độc giả.");
         return;
